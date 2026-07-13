@@ -1,0 +1,68 @@
+version: 2
+
+models:
+  - name: stg_weather__locations
+    description: "Cleaned location dimension sourced from the locations seed."
+    columns:
+      - name: location_id
+        description: "Stable identifier for a location (also the extractor's output key)."
+        tests:
+          - not_null
+          - unique
+      - name: timezone
+        description: "IANA timezone name, used downstream for DST-aware local time."
+        tests:
+          - not_null
+
+  - name: stg_weather__forecast
+    description: "Deduplicated hourly forecast in UTC (latest batch per location/hour)."
+    columns:
+      - name: forecast_key
+        description: "Surrogate key: hash of location_id + hour."
+        tests:
+          - not_null
+          - unique
+      - name: location_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_weather__locations')
+              field: location_id
+      - name: observed_hour_utc
+        tests:
+          - not_null
+      - name: temperature_c
+        tests:
+          - accepted_range:
+              min_value: -90
+              max_value: 60
+      - name: shortwave_radiation_wm2
+        description: "Global horizontal shortwave solar radiation (W/m^2); >= 0, 0 at night."
+        tests:
+          - accepted_range:
+              min_value: 0
+              max_value: 1500
+
+  - name: stg_weather__actuals
+    description: "Deduplicated hourly reanalysis actuals in UTC (latest batch per location/hour)."
+    columns:
+      - name: actual_key
+        description: "Surrogate key: hash of location_id + hour."
+        tests:
+          - not_null
+          - unique
+      - name: location_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_weather__locations')
+              field: location_id
+      - name: observed_hour_utc
+        tests:
+          - not_null
+      - name: shortwave_radiation_wm2
+        description: "Global horizontal shortwave solar radiation (W/m^2); >= 0, 0 at night."
+        tests:
+          - accepted_range:
+              min_value: 0
+              max_value: 1500

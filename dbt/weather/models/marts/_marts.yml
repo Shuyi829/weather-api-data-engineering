@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: fct_hourly_weather
+    description: >
+      Hourly weather fact, one row per location per hour, with actual and
+      forecast measures side by side and DST-aware local timestamps.
+    columns:
+      - name: hourly_weather_key
+        description: "Surrogate key: hash of location_id + hour."
+        tests:
+          - not_null
+          - unique
+      - name: location_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_weather__locations')
+              field: location_id
+      - name: observed_hour_utc
+        tests:
+          - not_null
+
+  - name: fct_forecast_error
+    description: >
+      Forecast-vs-actual error at hourly grain over the overlap window
+      (hours present in both the forecast and actuals series).
+    columns:
+      - name: forecast_error_key
+        tests:
+          - not_null
+          - unique
+      - name: temperature_error_c
+        description: "Signed error: forecast minus actual (deg C)."
+        tests:
+          - not_null
+      - name: temperature_abs_error_c
+        tests:
+          - not_null
+          - accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: shortwave_radiation_error_wm2
+        description: "Signed radiation error: forecast minus actual (W/m^2)."
+      - name: shortwave_radiation_abs_error_wm2
+        description: "Absolute radiation error (W/m^2)."
+
+  - name: agg_forecast_skill_by_location
+    description: "Per-location forecast skill summary (MAE, bias, RMSE)."
+    columns:
+      - name: location_id
+        tests:
+          - not_null
+          - unique
+      - name: scored_hours
+        tests:
+          - not_null

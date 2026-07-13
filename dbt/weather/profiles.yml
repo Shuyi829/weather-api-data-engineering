@@ -1,0 +1,16 @@
+# Local dbt profile. dbt-duckdb resolves the relative path from the directory
+# where you run dbt (this dbt project folder), so ../../data/weather.duckdb
+# points at <project-root>/data/weather.duckdb - the same file the extractor writes.
+#
+# Override with the WEATHER_DUCKDB env var if you keep the database elsewhere.
+weather:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('WEATHER_DUCKDB', '../../data/weather.duckdb') }}"
+      threads: 4
+      # ICU provides IANA named-timezone support (America/New_York, Asia/Kolkata, ...)
+      # used by the intermediate models for DST-aware local time.
+      extensions:
+        - icu

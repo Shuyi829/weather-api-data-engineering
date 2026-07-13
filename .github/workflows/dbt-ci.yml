@@ -1,0 +1,61 @@
+name: dbt CI
+
+# Unlike the legacy repo (which publishes a pre-built exe), this pipeline builds
+# and TESTS the transformations from source on every PR: seed -> run -> test.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dbt/weather
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-core==1.9.1 dbt-duckdb==1.9.1
+
+      - name: dbt deps
+        run: dbt deps --profiles-dir .
+
+      # Build the warehouse from seeds only (no live API needed in CI): the
+      # seed provides locations; sources are created empty, so models compile
+      # and run, and generic tests validate the SQL contracts.
+      - name: dbt seed
+        run: dbt seed --profiles-dir .
+
+      - name: Create empty raw sources
+        run: |
+          python - <<'PY'
+          import duckdb
+          con = duckdb.connect("../../data/weather.duckdb")
+          con.execute("CREATE SCHEMA IF NOT EXISTS raw;")
+          cols = """
+              location_id VARCHAR, timestamp_utc VARCHAR,
+              temperature_2m DOUBLE, relative_humidity_2m DOUBLE,
+              cloud_cover DOUBLE, wind_speed_10m DOUBLE,
+              wind_direction_10m DOUBLE, precipitation DOUBLE,
+              source VARCHAR, run_id VARCHAR, ingested_at_utc TIMESTAMP
+          """
+          con.execute(f"CREATE TABLE IF NOT EXISTS raw.forecast ({cols});")
+          con.execute(f"CREATE TABLE IF NOT EXISTS raw.actuals ({cols});")
+          con.close()
+          PY
+
+      - name: dbt build (run + test)
+        run: dbt build --profiles-dir . --exclude source:raw
+
+      - name: Generate docs
+        run: dbt docs generate --profiles-dir .
