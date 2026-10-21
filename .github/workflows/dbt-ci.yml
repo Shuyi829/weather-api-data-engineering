@@ -30,6 +30,11 @@ jobs:
       - name: dbt deps
         run: dbt deps --profiles-dir .
 
+      # data/ is gitignored, so it doesn't exist on a fresh checkout; DuckDB
+      # can create the database file but not its parent directory.
+      - name: Create data directory
+        run: mkdir -p ../../data
+
       # Build the warehouse from seeds only (no live API needed in CI): the
       # seed provides locations; sources are created empty, so models compile
       # and run, and generic tests validate the SQL contracts.
@@ -47,6 +52,7 @@ jobs:
               temperature_2m DOUBLE, relative_humidity_2m DOUBLE,
               cloud_cover DOUBLE, wind_speed_10m DOUBLE,
               wind_direction_10m DOUBLE, precipitation DOUBLE,
+              shortwave_radiation DOUBLE,
               source VARCHAR, run_id VARCHAR, ingested_at_utc TIMESTAMP
           """
           con.execute(f"CREATE TABLE IF NOT EXISTS raw.forecast ({cols});")
