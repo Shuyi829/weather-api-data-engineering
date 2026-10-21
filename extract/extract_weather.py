@@ -1,6 +1,6 @@
 """Weather data extractor (Extract + Load-to-raw stage).
 
-Mirrors the production pattern from the DataSupportScripts weather scrapers:
+Mirrors a common production pattern for vendor weather scrapers:
 
     Vendor API  ->  write files to a landing zone  ->  write a _SUCCESS marker
                 ->  load the landed files into the warehouse (raw schema)
@@ -206,7 +206,7 @@ def run(args: argparse.Namespace) -> int:
     total_fc = load_to_duckdb(Path(args.db), forecast_all, "forecast")
     total_ac = load_to_duckdb(Path(args.db), actuals_all, "actuals")
 
-    # Sentinel / _SUCCESS marker - the "data is ready" signal (see AG2 scraper pattern).
+    # Sentinel / _SUCCESS marker - the "data is ready" signal for the load step.
     landing_dir.mkdir(parents=True, exist_ok=True)
     marker = landing_dir / "_SUCCESS"
     marker.write_text(

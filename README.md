@@ -139,8 +139,8 @@ This project is a modernised re-implementation of a common production pattern
 |---|---|
 | Per-vendor Python scraper | `extract_weather.py` |
 | CSV dropped on an FTP/SMB share (staging) | Parquet in a landing zone |
-| `scrape_complete.txt` sentinel | `_SUCCESS` marker gating the load |
-| Proprietary bulk loader (e.g. ConsoleData) | DuckDB `raw` load step |
+| "Scrape complete" sentinel file | `_SUCCESS` marker gating the load |
+| Proprietary bulk loader | DuckDB `raw` load step |
 | Hand-written `CREATE VIEW` SQL | dbt staging/intermediate/marts (versioned + tested) |
 | Proprietary scheduler | Dagster job + schedule |
 | Per-4-digit-offset timezone logic in Python | Declarative IANA/DST handling in dbt |
