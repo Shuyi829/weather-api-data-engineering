@@ -8,8 +8,8 @@ Each extractor run leaves a folder in the landing zone:
 
 For every run folder that has a _SUCCESS marker, this script:
 
-  1. PUTs the Parquet files into an internal stage at @raw.landing/<run_id>/<source>/
-  2. runs COPY INTO raw.<source>, deriving run_id and ingested_at_utc from the
+  1. PUTs the Parquet files into an internal stage at @landing/<run_id>/<source>/
+  2. runs COPY INTO <source>, deriving run_id and ingested_at_utc from the
      staged file path (the run_id starts with the UTC time the run began)
 
 COPY INTO keeps per-table load metadata and skips files it has already loaded,
@@ -52,7 +52,7 @@ VALUE_COLUMNS = [
 ]
 
 RAW_TABLE_DDL = """
-create table if not exists raw.{table} (
+create table if not exists {table} (
     location_id          varchar,
     timestamp_utc        varchar,
     {value_columns},
@@ -67,7 +67,7 @@ create table if not exists raw.{table} (
 # Parquet columns are read from the $1 variant; run_id is the first folder of
 # the staged path and its first 16 chars are the run's UTC start time.
 COPY_SQL = """
-copy into raw.{table} (
+copy into {table} (
     location_id, timestamp_utc, {value_columns}, source,
     run_id, ingested_at_utc, _source_file
 )
@@ -80,9 +80,9 @@ from (
         split_part(metadata$filename, '/', 1),
         to_timestamp_ntz(left(split_part(metadata$filename, '/', 1), 16), 'YYYYMMDD"T"HH24MISS"Z"'),
         metadata$filename
-    from @raw.landing/{run_id}/{table}/
+    from @landing/{run_id}/{table}/
 )
-file_format = (format_name = 'raw.parquet_format')
+file_format = (format_name = 'parquet_format')
 """
 
 
@@ -93,26 +93,49 @@ def log(message: str) -> None:
 
 def connect() -> snowflake.connector.SnowflakeConnection:
     load_dotenv(PROJECT_ROOT / ".env")
-    missing = [k for k in ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PRIVATE_KEY_PATH") if not os.getenv(k)]
+    missing = [k for k in ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER") if not os.getenv(k)]
+    key_path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
+    authenticator = os.getenv("SNOWFLAKE_AUTHENTICATOR")
+    if not key_path and not authenticator:
+        missing.append("SNOWFLAKE_PRIVATE_KEY_PATH or SNOWFLAKE_AUTHENTICATOR")
     if missing:
         raise SystemExit(f"Missing settings in .env: {', '.join(missing)} (see .env.example)")
+    # Key-pair auth (service user) if a key is configured, otherwise e.g. SSO
+    # via SNOWFLAKE_AUTHENTICATOR=externalbrowser (opens a browser to log in).
+    auth = {"private_key_file": key_path} if key_path else {
+        "authenticator": authenticator,
+        "client_store_temporary_credential": True,  # cache the SSO token between runs
+    }
     return snowflake.connector.connect(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         user=os.environ["SNOWFLAKE_USER"],
-        private_key_file=os.environ["SNOWFLAKE_PRIVATE_KEY_PATH"],
         role=os.getenv("SNOWFLAKE_LOADER_ROLE", "WEATHER_LOADER"),
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "WEATHER_WH"),
         database=os.getenv("SNOWFLAKE_DATABASE", "WEATHER"),
-        schema="RAW",
+        **auth,
     )
 
 
+def raw_schema() -> str:
+    return os.getenv("SNOWFLAKE_RAW_SCHEMA", "RAW")
+
+
 def ensure_objects(cur) -> None:
-    """Create the file format, stage and raw tables if they don't exist yet."""
-    cur.execute("create file format if not exists raw.parquet_format type = parquet")
+    """Create the raw schema, file format, stage and raw tables if they don't exist yet.
+
+    Everything below is unqualified, so it lands in the raw schema made current here.
+    """
+    # Snowflake checks CREATE SCHEMA even with IF NOT EXISTS, and a least-privilege
+    # loader role may not have it, so only create the schema when it's missing.
+    try:
+        cur.execute(f"use schema {raw_schema()}")
+    except snowflake.connector.errors.ProgrammingError:
+        cur.execute(f"create schema {raw_schema()}")
+        cur.execute(f"use schema {raw_schema()}")
+    cur.execute("create file format if not exists parquet_format type = parquet")
     cur.execute(
-        "create stage if not exists raw.landing "
-        "file_format = (format_name = 'raw.parquet_format') "
+        "create stage if not exists landing "
+        "file_format = (format_name = 'parquet_format') "
         "comment = 'Landing-zone Parquet files, one folder per extractor run'"
     )
     value_ddl = ",\n    ".join(f"{c:<20} double" for c in VALUE_COLUMNS)
@@ -141,7 +164,7 @@ def load_run(cur, run_dir: Path) -> dict[str, int]:
             continue
         # Parquet is already compressed, so skip gzip; files already staged are left alone.
         local = files_dir.as_posix()
-        cur.execute(f"put 'file://{local}/*.parquet' @raw.landing/{run_id}/{table}/ auto_compress = false")
+        cur.execute(f"put 'file://{local}/*.parquet' @landing/{run_id}/{table}/ auto_compress = false")
         cur.execute(
             COPY_SQL.format(
                 table=table,
@@ -163,7 +186,7 @@ def run(args: argparse.Namespace) -> int:
     try:
         cur.execute("select current_user(), current_role(), current_warehouse(), current_database()")
         user, role, wh, db = cur.fetchone()
-        log(f"Connected as {user} (role={role}, warehouse={wh}, database={db})")
+        log(f"Connected as {user} (role={role}, warehouse={wh}, database={db}, raw schema={raw_schema()})")
         if args.check:
             return 0
 
@@ -178,8 +201,8 @@ def run(args: argparse.Namespace) -> int:
             if any(loaded.values()):
                 log(f"  {run_dir.name}: " + ", ".join(f"{t}={n}" for t, n in loaded.items()))
         for table in SOURCES:
-            cur.execute(f"select count(*) from raw.{table}")
-            log(f"raw.{table}: +{totals[table]} rows this run, {cur.fetchone()[0]} total")
+            cur.execute(f"select count(*) from {table}")
+            log(f"{raw_schema()}.{table}: +{totals[table]} rows this run, {cur.fetchone()[0]} total")
     finally:
         cur.close()
         con.close()
@@ -187,7 +210,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Load landed weather batches into Snowflake RAW.")
+    p = argparse.ArgumentParser(description="Load landed weather batches into the Snowflake raw schema.")
     p.add_argument("--landing", default=str(DEFAULT_LANDING), help="Landing-zone root folder.")
     p.add_argument("--run-id", help="Load only this run folder (default: every completed run).")
     p.add_argument("--check", action="store_true", help="Only test the connection.")

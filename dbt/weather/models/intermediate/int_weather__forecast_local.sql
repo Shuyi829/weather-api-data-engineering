@@ -22,7 +22,7 @@ select
     l.country,
     l.timezone,
     f.observed_hour_utc,
-    (f.observed_hour_utc at time zone 'UTC') at time zone l.timezone as observed_hour_local,
+    {{ to_local_time('f.observed_hour_utc', 'l.timezone') }} as observed_hour_local,
     f.temperature_c,
     f.relative_humidity_pct,
     f.cloud_cover_pct,

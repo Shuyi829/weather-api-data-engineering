@@ -1,9 +1,9 @@
 {#
     Convert UTC observation hours to DST-aware local wall-clock time.
 
-    The naive UTC timestamp is first stamped as UTC, then converted to each
-    location's IANA timezone. DuckDB's ICU extension handles DST transitions,
-    so e.g. Europe/London hours shift by +0/+1 across BST automatically and
+    The naive UTC timestamp is converted to each location's IANA timezone by
+    the to_local_time macro (DuckDB ICU or Snowflake convert_timezone), which
+    handles DST transitions, so e.g. Europe/London hours shift by +0/+1 across BST automatically and
     Asia/Kolkata keeps its +05:30 half-hour offset.
 
     This mirrors the timezone handling in the production weather scrapers,
@@ -30,7 +30,7 @@ select
     l.country,
     l.timezone,
     a.observed_hour_utc,
-    (a.observed_hour_utc at time zone 'UTC') at time zone l.timezone as observed_hour_local,
+    {{ to_local_time('a.observed_hour_utc', 'l.timezone') }} as observed_hour_local,
     a.temperature_c,
     a.relative_humidity_pct,
     a.cloud_cover_pct,

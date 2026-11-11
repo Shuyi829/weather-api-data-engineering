@@ -12,23 +12,20 @@ Working notes for continuing the Snowflake migration on another machine.
   to `@raw.landing` and runs `COPY INTO`. All 37 historical runs are loaded
   (`RAW.FORECAST` 551,448 rows, `RAW.ACTUALS` 743,256 rows). A re-run loads 0 rows (idempotent).
 
-## Next: Step 3, dbt on Snowflake
+- **Step 3: dbt on Snowflake.** `snowflake` target in `profiles.yml` (all settings from env vars;
+  key-pair or SSO via `SNOWFLAKE_AUTHENTICATOR=externalbrowser`), `to_local_time` macro dispatched per
+  adapter. DuckDB 42/42 and Snowflake trial 38/38 pass (`--exclude source:raw`).
+  Loader and dbt raw/dbt schema names are configurable (`SNOWFLAKE_RAW_SCHEMA`, `SNOWFLAKE_DBT_SCHEMA`).
 
-1. `pip install dbt-snowflake==1.9.4` (matches dbt-core 1.9.1). This downgrades
-   `snowflake-connector-python` to 3.18.1; update `requirements.txt` to pin that version.
-2. Add a `snowflake` output to `dbt/weather/profiles.yml` (type snowflake, key-pair via
-   `private_key_path`, role `WEATHER_TRANSFORMER`, database `WEATHER`, schema `dbt`), reading
-   settings from env vars. Keep `target: dev` (DuckDB) as the default.
-3. Add `macros/to_local_time.sql` using `adapter.dispatch`:
-   `default__` = `(ts at time zone 'UTC') at time zone tz` (DuckDB),
-   `snowflake__` = `convert_timezone('UTC', tz, ts)`.
-   Use it in both `int_weather__*_local.sql` models. This is the only DuckDB-specific SQL.
-   (Checked: Snowflake parses `timestamp_utc` and `convert_timezone` gives the correct DST offsets.)
-4. `dbt build --profiles-dir .` on DuckDB must still pass.
-5. dbt doesn't read `.env`: load it into the shell, then
-   `dbt debug --target snowflake` and `dbt build --target snowflake --exclude source:raw`.
-6. Compare `DBT_MARTS.AGG_FORECAST_SKILL_BY_LOCATION` with DuckDB. Small differences are expected:
-   Snowflake has all 37 runs and DuckDB only the 20 since the radiation reset.
+## Next: move to a shared learning database
+
+The trial expires mid-November. Target: a learning database in another account, where only one
+pre-provisioned role and warehouse exist (no own roles/users/resource monitor, so `00_setup.sql`
+does not apply). Point `.env` at it (own user + SSO, one role for loading and dbt, schemas
+`WEATHER_RAW` / `WEATHER_*`), run the loader to reload all landing runs, then `dbt build`.
+
+Running dbt with `.env`: dbt does not read `.env`, so load it into the shell first
+(PowerShell: `Get-Content ..\..\.env | Where-Object { $_ -match '^[^#].*=' } | ForEach-Object { $k, $v = $_ -split '=', 2; Set-Item "env:$($k.Trim())" $v.Trim() }`).
 
 ## Later
 

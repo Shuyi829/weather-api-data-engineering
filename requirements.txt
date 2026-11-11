@@ -5,8 +5,9 @@ duckdb==1.1.3
 dbt-core==1.9.1
 dbt-duckdb==1.9.1
 
-# Snowflake target (optional - only needed for extract/load_snowflake.py)
-snowflake-connector-python==5.0.0
+# Snowflake target (optional)
+dbt-snowflake==1.9.4
+snowflake-connector-python==3.18.1   # dbt-snowflake 1.9 needs connector 3.x
 python-dotenv==1.2.2
 
 # Orchestration (optional - only needed to run the Dagster pipeline)

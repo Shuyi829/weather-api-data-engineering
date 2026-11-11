@@ -14,3 +14,21 @@ weather:
       # used by the intermediate models for DST-aware local time.
       extensions:
         - icu
+
+    # Snowflake target: dbt build --target snowflake
+    # All settings come from env vars (see ../../.env.example). dbt does not read
+    # .env itself, so load it into the shell first. Auth is key-pair when
+    # SNOWFLAKE_PRIVATE_KEY_PATH is set, otherwise SNOWFLAKE_AUTHENTICATOR
+    # (e.g. externalbrowser for SSO).
+    snowflake:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH', '') }}"
+      authenticator: "{{ env_var('SNOWFLAKE_AUTHENTICATOR', '') }}"
+      role: "{{ env_var('SNOWFLAKE_TRANSFORMER_ROLE', 'WEATHER_TRANSFORMER') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'WEATHER_WH') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'WEATHER') }}"
+      # Prefix for dbt's schemas: <schema>_STAGING, <schema>_INTERMEDIATE, <schema>_MARTS
+      schema: "{{ env_var('SNOWFLAKE_DBT_SCHEMA', 'DBT') }}"
+      threads: 4

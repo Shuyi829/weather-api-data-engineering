@@ -3,7 +3,9 @@ version: 2
 sources:
   - name: raw
     description: "Raw Open-Meteo batches landed by the Python extractor."
-    schema: raw
+    # DuckDB always uses "raw"; on Snowflake the raw schema is configurable
+    # (same SNOWFLAKE_RAW_SCHEMA env var the loader uses).
+    schema: "{{ env_var('SNOWFLAKE_RAW_SCHEMA', 'RAW') if target.type == 'snowflake' else 'raw' }}"
     tables:
       - name: forecast
         description: "Hourly model forecast (incl. recent past) in UTC, one row per location/hour/batch."
